@@ -895,9 +895,6 @@ class DSNCApp {
     // Dashboard View
     document.getElementById('btn-start-observe').onclick = () => this.navigateTo('view-camera');
     document.getElementById('btn-sync-lab').onclick = () => this.handleSyncLab();
-    document.getElementById('btn-export-json').onclick = () => this.exportJSON();
-    document.getElementById('btn-export-csv').onclick = () => this.exportCSV();
-    document.getElementById('btn-reset-data').onclick = () => this.handleResetData();
     
     // Camera View
     document.getElementById('btn-camera-capture').onclick = () => this.handleCapture();

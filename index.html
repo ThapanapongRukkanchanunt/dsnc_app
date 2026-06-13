@@ -154,48 +154,14 @@
       </div>
 
       <!-- Main Journal Section -->
-      <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        
-        <!-- Left Side: Controls & Conservation Info -->
-        <div class="lg:col-span-1 flex flex-col gap-4">
-          <div class="bg-neutral-900 border-4 border-black p-4 retro-border">
-            <h3 class="font-arcade text-[9px] text-retro-blue mb-3 border-b-2 border-black pb-2">จัดการข้อมูลวิจัย</h3>
-            <div class="flex flex-col gap-2.5">
-              <button id="btn-export-csv" class="w-full text-left bg-neutral-800 hover:bg-neutral-700 text-white font-arcade text-[8px] p-2.5 border-2 border-black retro-border flex items-center gap-2 retro-btn uppercase">
-                📥 ส่งออกตาราง Excel (CSV)
-              </button>
-              <button id="btn-export-json" class="w-full text-left bg-neutral-800 hover:bg-neutral-700 text-white font-arcade text-[8px] p-2.5 border-2 border-black retro-border flex items-center gap-2 retro-btn uppercase">
-                📥 ส่งออกไฟล์วิจัย (JSON)
-              </button>
-              <button id="btn-reset-data" class="w-full text-left bg-red-950/40 hover:bg-red-950 text-red-400 font-arcade text-[8px] p-2.5 border-2 border-black retro-border flex items-center gap-2 retro-btn uppercase border-red-900/50">
-                ❌ ล้างบันทึกทั้งหมด
-              </button>
-            </div>
-          </div>
+      <div class="flex flex-col gap-3 w-full mt-4">
+        <h3 class="font-arcade text-[10px] text-retro-yellow mb-1 select-none flex items-center gap-2">
+          📂 คลังรูปภาพบันทึกสัตว์ป่าของฉัน
+        </h3>
 
-          <div class="bg-neutral-900 border-4 border-black p-4 retro-border text-xs text-neutral-400 leading-relaxed font-body">
-            <h3 class="font-arcade text-[9px] text-retro-pink mb-3 border-b-2 border-black pb-2">คุณค่าของข้อมูลวิจัย</h3>
-            <p class="mb-2"><strong>ศูนย์ธรรมชาติวิทยาดอยสุเทพ</strong> นำข้อมูลนี้ไปใช้วิเคราะห์การเปลี่ยนแปลงทางชีวภาพของผืนป่าดอยสุเทพ!</p>
-            <p>รูปภาพวิจัยคุณภาพ (Research Grade) มีสเปกดังนี้ครับ:</p>
-            <ul class="list-disc list-inside mt-1 space-y-1 font-semibold text-neutral-300">
-              <li>ความแม่นยำ GPS ดีเยี่ยม (&le; 15 เมตร)</li>
-              <li>ตรงกับสัตว์ป่าในระบบ</li>
-              <li>ยืนยันชื่อสัตว์ป่าครบถ้วน</li>
-            </ul>
-          </div>
+        <div id="journal-list-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[600px] overflow-y-auto pr-1">
+          <!-- Dynamic elements loaded via app.js -->
         </div>
-
-        <!-- Right Side: Observations List -->
-        <div class="lg:col-span-3 flex flex-col gap-3">
-          <h3 class="font-arcade text-[10px] text-retro-yellow mb-1 select-none flex items-center gap-2">
-            📂 คลังรูปภาพบันทึกสัตว์ป่าของฉัน
-          </h3>
-          
-          <div id="journal-list-container" class="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[600px] overflow-y-auto pr-1">
-            <!-- Dynamic elements loaded via app.js -->
-          </div>
-        </div>
-
       </div>
     </section>
 
