@@ -118,3 +118,44 @@ export async function detectAnimals(imageElement) {
     };
   }
 }
+
+// Configuration for Firebase Cloud Function (Update this URL after deploying)
+const CLOUD_FUNCTION_URL = 'https://detectspecies-j5xwjeucgq-uc.a.run.app';
+
+/**
+ * Calls the Firebase Cloud Function to analyze the image using Google Cloud Vision API.
+ * 
+ * @param {string} base64Image - The base64-encoded cropped image string.
+ * @returns {Promise<Object>} The Cloud Vision labels and objects.
+ */
+export async function identifySpeciesViaCloud(base64Image) {
+  // Strip metadata prefix if present (e.g. "data:image/jpeg;base64,")
+  const base64Data = base64Image.includes(',') ? base64Image.split(',')[1] : base64Image;
+
+  try {
+    console.log('Requesting Google Cloud Vision analysis via Firebase Cloud Function...');
+    const response = await fetch(CLOUD_FUNCTION_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ image: base64Data })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Cloud Function responded with status ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (err) {
+    console.error('Failed to identify species via cloud:', err);
+    return {
+      success: false,
+      error: err.message,
+      labels: [],
+      objects: []
+    };
+  }
+}
+

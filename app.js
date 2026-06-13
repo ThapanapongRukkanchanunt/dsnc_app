@@ -3,8 +3,8 @@
 import { DSNCDatabase } from './db.js';
 import { calculateMetrics } from './scorer.js';
 import { cameraService } from './camera.js';
-import { detectAnimals } from './detector.js';
 import { BoundingBoxOverlay } from './adjuster.js';
+import { detectAnimals, identifySpeciesViaCloud } from './detector.js';
 
 function generateUUID() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -282,12 +282,194 @@ class DSNCApp {
     );
   }
 
-  handleAnalysisProceed() {
+  async handleAnalysisProceed() {
     if (this.boundingBoxOverlay) {
       this.activeObservation.boundingBox = this.boundingBoxOverlay.getBox();
     }
-    this.navigateTo('view-species');
-    this.setupSpeciesSelector();
+
+    const loadingText = document.getElementById('analysis-loading-text');
+    const adjusterContainer = document.getElementById('adjuster-container');
+    const adjusterInstructions = document.getElementById('adjuster-instructions');
+    const adjusterActions = document.getElementById('adjuster-actions');
+
+    // Show loading spinner, hide crop adjuster controls
+    loadingText.classList.remove('hidden');
+    adjusterContainer.classList.add('hidden');
+    adjusterInstructions.classList.add('hidden');
+    adjusterActions.classList.add('hidden');
+
+    // Update loading text to reflect Cloud AI processing
+    const pulseText = loadingText.querySelector('.animate-pulse');
+    const descText = loadingText.querySelector('.font-body');
+    const originalPulse = pulseText.textContent;
+    const originalDesc = descText.textContent;
+
+    pulseText.textContent = 'พี่ซายม่อนกำลังวิเคราะห์จำแนกสัตว์ด้วย Cloud AI...';
+    descText.textContent = 'ระบบกำลังส่งภาพที่ครอปไปยังคลาวด์เพื่อตรวจจับรายละเอียดสายพันธุ์อย่างแม่นยำ กรุณารอสักครู่นะครับ!';
+
+    try {
+      // 1. Crop image to bounding box & get base64
+      const croppedBase64 = await this.getCroppedImageBase64();
+
+      // 2. Call Firebase Cloud Function
+      const cloudResult = await identifySpeciesViaCloud(croppedBase64);
+      console.log('Cloud Identification Result:', cloudResult);
+
+      // 3. Keep results in active observation
+      this.activeObservation.cloudVisionLabels = cloudResult.success ? cloudResult.labels : [];
+      
+      // Auto-match or find best suggestion from our curated catalog
+      const bestMatch = this.findBestSpeciesMatch(this.activeObservation.cloudVisionLabels);
+      if (bestMatch) {
+        this.activeObservation.species = {
+          id: bestMatch.id,
+          commonName: bestMatch.commonName,
+          scientificName: bestMatch.scientificName,
+          userConfirmed: false, // will be confirmed by user on next screen
+          source: 'local'
+        };
+      } else {
+        this.activeObservation.species = {
+          id: '',
+          commonName: '',
+          scientificName: '',
+          userConfirmed: false,
+          source: 'local'
+        };
+      }
+    } catch (err) {
+      console.error('Error in species recognition:', err);
+      this.activeObservation.species = {
+        id: '',
+        commonName: '',
+        scientificName: '',
+        userConfirmed: false,
+        source: 'local'
+      };
+    } finally {
+      // Restore loading text for next captures
+      pulseText.textContent = originalPulse;
+      descText.textContent = originalDesc;
+
+      // Navigate to species selection screen
+      this.navigateTo('view-species');
+      this.setupSpeciesSelector();
+    }
+  }
+
+  /**
+   * Crops the observation image to the user's bounding box and returns a base64 string.
+   */
+  async getCroppedImageBase64() {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const box = this.activeObservation.boundingBox;
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+
+          const nw = img.naturalWidth || img.width;
+          const nh = img.naturalHeight || img.height;
+
+          // Calculate pixel boundaries from normalized coordinates [0, 1]
+          const sx = Math.floor(box.x * nw);
+          const sy = Math.floor(box.y * nh);
+          const sWidth = Math.floor(box.width * nw);
+          const sHeight = Math.floor(box.height * nh);
+
+          // Prevent 0 width/height canvas errors
+          canvas.width = Math.max(1, sWidth);
+          canvas.height = Math.max(1, sHeight);
+
+          // Draw cropped section to canvas
+          ctx.drawImage(
+            img,
+            sx, sy, sWidth, sHeight,
+            0, 0, canvas.width, canvas.height
+          );
+
+          // Export as compressed JPEG
+          resolve(canvas.toDataURL('image/jpeg', 0.8));
+        } catch (err) {
+          reject(err);
+        }
+      };
+      img.onerror = (err) => reject(err);
+      img.src = this.activeObservation.photoUrl;
+    });
+  }
+
+  /**
+   * Tries to find a match in our local catalog based on Google Cloud Vision labels.
+   */
+  findBestSpeciesMatch(labels) {
+    if (!labels || labels.length === 0) return null;
+
+    // Label mapping (lowercase Vision label -> local catalog ID)
+    const labelMapping = {
+      'flying lemur': 'sunda_colugo',
+      'colugo': 'sunda_colugo',
+      'galeopterus': 'sunda_colugo',
+      
+      'slow loris': 'slow_loris',
+      'loris': 'slow_loris',
+      'nycticebus': 'slow_loris',
+      'primate': 'slow_loris',
+      
+      'pheasant': 'siamese_fireback',
+      'fireback': 'siamese_fireback',
+      'lophura': 'siamese_fireback',
+      
+      'magpie': 'red_billed_blue_magpie',
+      'blue magpie': 'red_billed_blue_magpie',
+      'urocissa': 'red_billed_blue_magpie',
+      
+      'gecko': 'bent_toed_gecko',
+      'lizard': 'bent_toed_gecko',
+      
+      'viper': 'green_pit_viper',
+      'pit viper': 'green_pit_viper',
+      'trimeresurus': 'green_pit_viper',
+      
+      'moth': 'atlas_moth',
+      'atlas moth': 'atlas_moth',
+      'attacus': 'atlas_moth',
+      
+      'butterfly': 'golden_birdwing',
+      'birdwing': 'golden_birdwing',
+      'troides': 'golden_birdwing'
+    };
+
+    // Find first matching keyword with highest confidence
+    for (const label of labels) {
+      const desc = label.description.toLowerCase();
+      if (labelMapping[desc]) {
+        const speciesId = labelMapping[desc];
+        const match = this.speciesCatalog.find(s => s.id === speciesId);
+        if (match) return match;
+      }
+      
+      // Substring check
+      for (const key of Object.keys(labelMapping)) {
+        if (desc.includes(key)) {
+          const speciesId = labelMapping[key];
+          const match = this.speciesCatalog.find(s => s.id === speciesId);
+          if (match) return match;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Helper to check if any of the labels indicate a domestic animal.
+   */
+  checkIfDomesticAnimal(labels) {
+    if (!labels) return false;
+    const domesticKeywords = ['dog', 'cat', 'domestic cat', 'canine', 'puppy', 'kitten', 'felidae', 'canidae'];
+    return labels.some(label => domesticKeywords.includes(label.description.toLowerCase()));
   }
 
   // --- SPECIES SELECTOR & ONLINE SEARCH ---
@@ -295,22 +477,36 @@ class DSNCApp {
     const photoThumb = document.getElementById('species-photo-thumbnail');
     photoThumb.src = this.activeObservation.photoUrl;
 
-    // Reset fields
+    // Reset search input fields
     document.getElementById('species-search-input').value = '';
     this.renderSpeciesList(this.speciesCatalog);
     
-    // Choose active target species in selector if we have pre-matched it
-    if (this.activeObservation.species.id) {
+    const speechBubble = document.getElementById('scimon-speech-bubble');
+    const labels = this.activeObservation.cloudVisionLabels || [];
+    const isDomestic = this.checkIfDomesticAnimal(labels);
+
+    if (isDomestic) {
+      speechBubble.innerHTML = `⚠️ <strong>นั่นมันสัตว์เลี้ยงนี่นา! 🐶🐱</strong> พี่ซายม่อนตรวจพบสัตว์เลี้ยงบ้านครับ แอปนี้สร้างขึ้นสำหรับสัตว์ป่าตามธรรมชาติบนดอยสุเทพเท่านั้นนะคร้าบ ลองไปหาส่องสัตว์ป่ามาบันทึกใหม่นะ!`;
+    } else if (this.activeObservation.species.id) {
       const match = this.speciesCatalog.find(s => s.id === this.activeObservation.species.id);
       if (match) {
         this.selectSpecies(match);
+        speechBubble.innerHTML = `✨ <strong>พี่ซายม่อนชี้แนะ:</strong> ผลการวิเคราะห์เสร็จสิ้น! ตรวจพบลักษณะภาพคล้ายกับ <strong>"${match.commonName}"</strong> ลองตรวจสอบความถูกต้องและรายละเอียดด้านขวาได้เลยครับ!`;
         return;
+      }
+    } else {
+      const topLabels = labels.slice(0, 3).map(l => l.description).join(', ');
+      if (topLabels) {
+        speechBubble.innerHTML = `🔍 <strong>พี่ซายม่อนชี้แนะ:</strong> พี่ซายม่อนไม่คุ้นตัวนี้เลย! ป้ายกำกับที่ Cloud AI แนะนำคือ: <em>${topLabels}</em> ลองเลือกจากตารางที่ใกล้เคียง หรือค้นเพิ่มบน iNaturalist นะครับ!`;
+      } else {
+        speechBubble.innerHTML = `"เลือกชื่อของสัตว์ตัวในภาพจากตารางตรงกลางได้เลยครับ ยิ่งตัวที่ระดับความหายากสูงๆ จะทวีคูณคะแนนให้เยอะเลยล่ะครับน้องๆ!"`;
       }
     }
 
-    // Default select first item
+    // Default select first item if nothing pre-selected
     this.selectSpecies(this.speciesCatalog[0]);
   }
+
 
   renderSpeciesList(list, highlightId = null) {
     const container = document.getElementById('species-list-container');
