@@ -25,6 +25,7 @@ class DSNCApp {
     this.currentView = 'welcome';
     this.observations = [];
     this.speciesCatalog = [];
+    this.activeVisionSpeciesList = [];
     this.activeObservation = null; // Holds temp data of captured photo before saving
     this.activeGPS = null;
     this.gpsWatchId = null;
@@ -315,18 +316,80 @@ class DSNCApp {
       const cloudResult = await identifySpeciesViaCloud(croppedBase64);
       console.log('Cloud Identification Result:', cloudResult);
 
-      // 3. Keep results in active observation
-      this.activeObservation.cloudVisionLabels = cloudResult.success ? cloudResult.labels : [];
-      
-      // Auto-match or find best suggestion from our curated catalog
-      const bestMatch = this.findBestSpeciesMatch(this.activeObservation.cloudVisionLabels);
-      if (bestMatch) {
+      // 3. Process the labels and map to temporary species catalog
+      const visionLabels = cloudResult.success ? cloudResult.labels : [];
+      this.activeObservation.cloudVisionLabels = visionLabels;
+
+      this.activeVisionSpeciesList = visionLabels.map((label, index) => {
+        const desc = label.description.toLowerCase();
+        const score = label.score;
+        const id = `vision_${desc.replace(/\s+/g, '_')}`;
+        
+        // Capitalize words for common name
+        const commonName = desc.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+        // Mappings for common scientific names
+        const sciMap = {
+          'tiger': 'Panthera tigris',
+          'white tiger': 'Panthera tigris (White)',
+          'cat': 'Felis catus',
+          'dog': 'Canis lupus familiaris',
+          'butterfly': 'Lepidoptera spp.',
+          'moth': 'Attacus spp.',
+          'gecko': 'Gekkonidae spp.',
+          'viper': 'Viperidae spp.',
+          'snake': 'Serpentes spp.',
+          'bird': 'Aves spp.',
+          'colugo': 'Galeopterus variegatus',
+          'slow loris': 'Nycticebus bengalensis',
+          'magpie': 'Urocissa erythroryncha'
+        };
+        const scientificName = sciMap[desc] || `${commonName} family`;
+
+        // Taxon Group estimation
+        let taxonGroup = 'mammal';
+        if (['bird', 'magpie', 'pheasant', 'owl', 'eagle'].some(x => desc.includes(x))) taxonGroup = 'bird';
+        else if (['reptile', 'snake', 'viper', 'lizard', 'gecko', 'turtle'].some(x => desc.includes(x))) taxonGroup = 'reptile';
+        else if (['insect', 'butterfly', 'moth', 'beetle', 'bee', 'wasp', 'arthropod'].some(x => desc.includes(x))) taxonGroup = 'insect';
+
+        // Rarity estimation from confidence score
+        let rarity = 'common';
+        let rarityMultiplier = 1.0;
+        if (score > 0.90) {
+          rarity = 'legendary';
+          rarityMultiplier = 5.0;
+        } else if (score > 0.80) {
+          rarity = 'rare';
+          rarityMultiplier = 3.0;
+        } else if (score > 0.65) {
+          rarity = 'uncommon';
+          rarityMultiplier = 1.5;
+        }
+
+        return {
+          id,
+          commonName,
+          scientificName,
+          taxonGroup,
+          rarity,
+          rarityMultiplier,
+          description: `วิเคราะห์โดย Google Cloud Vision AI (ความมั่นใจ ${Math.round(score * 100)}%)`,
+          conservationStatus: score > 0.90 ? 'NT' : 'LC',
+          ethicalGuidelines: 'สัตว์ป่าธรรมชาติ กรุณาเฝ้าสังเกตการณ์ในระยะปลอดภัยและไม่รบกวนถิ่นที่อยู่อาศัยนะครับ',
+          source: 'local' // Set as local for MVP to count as valid scientific record
+        };
+      });
+
+      // Pre-select the top label by default if list has items
+      if (this.activeVisionSpeciesList.length > 0) {
+        const topSpecies = this.activeVisionSpeciesList[0];
         this.activeObservation.species = {
-          id: bestMatch.id,
-          commonName: bestMatch.commonName,
-          scientificName: bestMatch.scientificName,
-          userConfirmed: false, // will be confirmed by user on next screen
-          source: 'local'
+          id: topSpecies.id,
+          commonName: topSpecies.commonName,
+          scientificName: topSpecies.scientificName,
+          userConfirmed: false,
+          source: 'local',
+          rarityMultiplier: topSpecies.rarityMultiplier
         };
       } else {
         this.activeObservation.species = {
@@ -334,17 +397,20 @@ class DSNCApp {
           commonName: '',
           scientificName: '',
           userConfirmed: false,
-          source: 'local'
+          source: 'local',
+          rarityMultiplier: 1.0
         };
       }
     } catch (err) {
       console.error('Error in species recognition:', err);
+      this.activeVisionSpeciesList = [];
       this.activeObservation.species = {
         id: '',
         commonName: '',
         scientificName: '',
         userConfirmed: false,
-        source: 'local'
+        source: 'local',
+        rarityMultiplier: 1.0
       };
     } finally {
       // Restore loading text for next captures
@@ -401,69 +467,6 @@ class DSNCApp {
   }
 
   /**
-   * Tries to find a match in our local catalog based on Google Cloud Vision labels.
-   */
-  findBestSpeciesMatch(labels) {
-    if (!labels || labels.length === 0) return null;
-
-    // Label mapping (lowercase Vision label -> local catalog ID)
-    const labelMapping = {
-      'flying lemur': 'sunda_colugo',
-      'colugo': 'sunda_colugo',
-      'galeopterus': 'sunda_colugo',
-      
-      'slow loris': 'slow_loris',
-      'loris': 'slow_loris',
-      'nycticebus': 'slow_loris',
-      'primate': 'slow_loris',
-      
-      'pheasant': 'siamese_fireback',
-      'fireback': 'siamese_fireback',
-      'lophura': 'siamese_fireback',
-      
-      'magpie': 'red_billed_blue_magpie',
-      'blue magpie': 'red_billed_blue_magpie',
-      'urocissa': 'red_billed_blue_magpie',
-      
-      'gecko': 'bent_toed_gecko',
-      'lizard': 'bent_toed_gecko',
-      
-      'viper': 'green_pit_viper',
-      'pit viper': 'green_pit_viper',
-      'trimeresurus': 'green_pit_viper',
-      
-      'moth': 'atlas_moth',
-      'atlas moth': 'atlas_moth',
-      'attacus': 'atlas_moth',
-      
-      'butterfly': 'golden_birdwing',
-      'birdwing': 'golden_birdwing',
-      'troides': 'golden_birdwing'
-    };
-
-    // Find first matching keyword with highest confidence
-    for (const label of labels) {
-      const desc = label.description.toLowerCase();
-      if (labelMapping[desc]) {
-        const speciesId = labelMapping[desc];
-        const match = this.speciesCatalog.find(s => s.id === speciesId);
-        if (match) return match;
-      }
-      
-      // Substring check
-      for (const key of Object.keys(labelMapping)) {
-        if (desc.includes(key)) {
-          const speciesId = labelMapping[key];
-          const match = this.speciesCatalog.find(s => s.id === speciesId);
-          if (match) return match;
-        }
-      }
-    }
-
-    return null;
-  }
-
-  /**
    * Helper to check if any of the labels indicate a domestic animal.
    */
   checkIfDomesticAnimal(labels) {
@@ -479,7 +482,13 @@ class DSNCApp {
 
     // Reset search input fields
     document.getElementById('species-search-input').value = '';
-    this.renderSpeciesList(this.speciesCatalog);
+    
+    // Choose catalog to display: Vision labels or local catalog fallback
+    const displayCatalog = (this.activeVisionSpeciesList && this.activeVisionSpeciesList.length > 0)
+      ? this.activeVisionSpeciesList
+      : this.speciesCatalog;
+
+    this.renderSpeciesList(displayCatalog);
     
     const speechBubble = document.getElementById('scimon-speech-bubble');
     const labels = this.activeObservation.cloudVisionLabels || [];
@@ -488,7 +497,7 @@ class DSNCApp {
     if (isDomestic) {
       speechBubble.innerHTML = `⚠️ <strong>นั่นมันสัตว์เลี้ยงนี่นา! 🐶🐱</strong> พี่ซายม่อนตรวจพบสัตว์เลี้ยงบ้านครับ แอปนี้สร้างขึ้นสำหรับสัตว์ป่าตามธรรมชาติบนดอยสุเทพเท่านั้นนะคร้าบ ลองไปหาส่องสัตว์ป่ามาบันทึกใหม่นะ!`;
     } else if (this.activeObservation.species.id) {
-      const match = this.speciesCatalog.find(s => s.id === this.activeObservation.species.id);
+      const match = displayCatalog.find(s => s.id === this.activeObservation.species.id);
       if (match) {
         this.selectSpecies(match);
         speechBubble.innerHTML = `✨ <strong>พี่ซายม่อนชี้แนะ:</strong> ผลการวิเคราะห์เสร็จสิ้น! ตรวจพบลักษณะภาพคล้ายกับ <strong>"${match.commonName}"</strong> ลองตรวจสอบความถูกต้องและรายละเอียดด้านขวาได้เลยครับ!`;
@@ -504,7 +513,9 @@ class DSNCApp {
     }
 
     // Default select first item if nothing pre-selected
-    this.selectSpecies(this.speciesCatalog[0]);
+    if (displayCatalog.length > 0) {
+      this.selectSpecies(displayCatalog[0]);
+    }
   }
 
 
@@ -555,7 +566,8 @@ class DSNCApp {
       commonName: species.commonName,
       scientificName: species.scientificName,
       userConfirmed: true,
-      source: species.source || 'local'
+      source: species.source || 'local',
+      rarityMultiplier: species.rarityMultiplier || 1.0
     };
 
     // Update details panel
@@ -596,11 +608,15 @@ class DSNCApp {
     // Guidelines Box
     document.getElementById('species-detail-guidelines').textContent = species.ethicalGuidelines;
 
-    // Refresh highlighted list item
+    // Refresh highlighted list item in the active catalog list
+    const displayCatalog = (this.activeVisionSpeciesList && this.activeVisionSpeciesList.length > 0)
+      ? this.activeVisionSpeciesList
+      : this.speciesCatalog;
+
     if (species.source === 'inaturalist') {
-      this.renderSpeciesList(this.speciesCatalog, null); // remove highlights on local list
+      this.renderSpeciesList(displayCatalog, null); // remove highlights
     } else {
-      this.renderSpeciesList(this.speciesCatalog, species.id);
+      this.renderSpeciesList(displayCatalog, species.id);
     }
   }
 
@@ -608,9 +624,13 @@ class DSNCApp {
     const query = document.getElementById('species-search-input').value.trim();
     const resultsHeader = document.getElementById('species-list-header');
     
+    const displayCatalog = (this.activeVisionSpeciesList && this.activeVisionSpeciesList.length > 0)
+      ? this.activeVisionSpeciesList
+      : this.speciesCatalog;
+
     if (!query) {
-      resultsHeader.textContent = 'สัตว์ป่าที่พบบ่อยบนดอยสุเทพ:';
-      this.renderSpeciesList(this.speciesCatalog, this.activeObservation.species.id);
+      resultsHeader.textContent = displayCatalog === this.activeVisionSpeciesList ? 'ป้ายกำกับสัตว์ป่าที่ตรวจพบด้วย AI:' : 'สัตว์ป่าที่พบบ่อยบนดอยสุเทพ:';
+      this.renderSpeciesList(displayCatalog, this.activeObservation.species.id);
       return;
     }
 
@@ -676,6 +696,9 @@ class DSNCApp {
     let selectedSpecies = null;
     if (this.activeObservation.species.source === 'local') {
       selectedSpecies = this.speciesCatalog.find(s => s.id === this.activeObservation.species.id);
+      if (!selectedSpecies && this.activeVisionSpeciesList) {
+        selectedSpecies = this.activeVisionSpeciesList.find(s => s.id === this.activeObservation.species.id);
+      }
     }
     
     const multiplier = selectedSpecies ? selectedSpecies.rarityMultiplier : (this.activeObservation.species.rarityMultiplier || 1.0);
