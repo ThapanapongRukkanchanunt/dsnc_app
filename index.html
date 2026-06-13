@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>บันทึกธรรมชาติสุเทพ - เกมส่องสัตว์ป่าดอยสุเทพ</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Custom Stylesheet -->
+  <link rel="stylesheet" href="styles.css">
+
+  <!-- Tailwind Configuration for Retro Theme -->
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            arcade: ['"Press Start 2P"', 'monospace'],
+            body: ['Outfit', 'sans-serif'],
+          },
+          colors: {
+            retro: {
+              yellow: '#f3e600',
+              pink: '#ff007f',
+              blue: '#00e1d9',
+              dark: '#121214',
+              darker: '#09090b',
+              border: '#2e2e35',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- TensorFlow.js and COCO-SSD Model CDN (Deferred for performance) -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd" defer></script>
+
+  <!-- Main Application Script -->
+  <script type="module" src="app.js" defer></script>
+</head>
+<body class="bg-retro-darker text-white font-body min-h-screen crt-container crt-flicker flex flex-col selection:bg-retro-pink selection:text-white">
+  
+  <!-- Header Bar -->
+  <header class="bg-black border-b-4 border-retro-pink p-4 flex justify-between items-center z-10 shrink-0">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 bg-retro-yellow border-2 border-black flex items-center justify-center text-black font-arcade text-lg select-none">
+        📸
+      </div>
+      <div>
+        <h1 class="font-arcade text-xs md:text-sm text-retro-yellow tracking-wider select-none text-outline-black">
+          DOI SUTHEP NATURE SNAP
+        </h1>
+        <p class="text-[9px] text-retro-blue font-arcade tracking-tighter uppercase mt-0.5">
+          บันทึกนักสืบธรรมชาติ & ส่องสัตว์เก็บคะแนน
+        </p>
+      </div>
+    </div>
+    
+    <!-- GPS Mini status -->
+    <div class="flex items-center gap-2 bg-neutral-900 border-2 border-retro-border px-3 py-1 font-mono text-[10px] text-neutral-400">
+      <span class="w-2 h-2 rounded-full bg-green-500 inline-block animate-pulse"></span>
+      <span>ระบบบันทึกแบบออฟไลน์ทำงาน</span>
+    </div>
+  </header>
+
+  <!-- Main Views Container -->
+  <main class="flex-grow flex flex-col p-4 md:p-6 overflow-y-auto max-w-6xl w-full mx-auto justify-center z-10">
+
+    <!-- 1. WELCOME SCREEN -->
+    <section id="view-welcome" class="app-view hidden max-w-lg mx-auto w-full flex flex-col items-center">
+      <div class="bg-neutral-900 border-4 border-black p-6 retro-border-pink flex flex-col items-center text-center w-full relative">
+        <div class="scanline-light"></div>
+        
+        <!-- Game Title Badge -->
+        <div class="bg-retro-pink text-white font-arcade text-[10px] px-3 py-1.5 border-2 border-black retro-border uppercase -mt-10 mb-6">
+          กดปุ่มเพื่อเริ่มส่องสัตว์ป่ากันเลย!
+        </div>
+
+        <h2 class="font-arcade text-lg md:text-xl text-retro-yellow mb-8 text-outline-black leading-relaxed">
+          สมุดบันทึก<br/>นักสืบธรรมชาติ
+        </h2>
+
+        <!-- Mascot Welcome Container -->
+        <div class="flex flex-col items-center gap-4 mb-8">
+          <img src="assets/mascot/welcome.png" alt="Waving Mascot" class="w-36 h-36 mascot-sprite object-contain" />
+          
+          <!-- Speech Bubble -->
+          <div class="dialog-box dialog-tail-left p-3.5 text-black rounded-lg text-left max-w-sm">
+            <h4 class="font-arcade text-[8px] text-retro-pink mb-1.5">พี่ซายม่อน (SciMon):</h4>
+            <p class="text-xs font-body leading-relaxed font-semibold text-neutral-800">
+              "สวัสดีครับน้องๆ! ยินดีต้อนรับสู่ศูนย์ธรรมชาติวิทยาดอยสุเทพ มาถ่ายรูปวิจัยเพื่ออนุรักษ์สัตว์ป่ากันนะ! จำไว้นะครับ: <strong>เราเฝ้าดูอยู่ห่างๆ ไม่วิ่งไล่ ไม่ป้อนอาหาร และไม่รบกวนสัตว์ป่านะคร้าบ!</strong>"
+            </p>
+          </div>
+        </div>
+
+        <!-- Start Button -->
+        <button id="btn-start-welcome" class="w-full bg-retro-yellow hover:bg-yellow-300 text-black font-arcade text-xs py-4 px-6 border-4 border-black retro-border-yellow font-bold uppercase tracking-widest cursor-pointer retro-btn">
+          เปิดสมุดบันทึก
+        </button>
+      </div>
+    </section>
+
+    <!-- 2. DASHBOARD / NATURE JOURNAL -->
+    <section id="view-dashboard" class="app-view hidden w-full flex flex-col gap-6">
+      
+      <!-- Stats Banner -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        
+        <div class="bg-neutral-900 border-4 border-black p-4 retro-border-blue flex justify-between items-center">
+          <div>
+            <div class="font-arcade text-[9px] text-retro-blue mb-1 uppercase">คะแนนรวมทั้งหมด</div>
+            <div id="stat-total-score" class="font-arcade text-xl text-white">0</div>
+          </div>
+          <span class="text-3xl select-none">🏆</span>
+        </div>
+
+        <div class="bg-neutral-900 border-4 border-black p-4 retro-border-pink flex justify-between items-center">
+          <div>
+            <div class="font-arcade text-[9px] text-retro-pink mb-1 uppercase">พบสัตว์ป่าแล้ว (ชนิด)</div>
+            <div id="stat-species-found" class="font-arcade text-xl text-white">0</div>
+          </div>
+          <span class="text-3xl select-none">🦎</span>
+        </div>
+
+        <div class="bg-neutral-900 border-4 border-black p-4 retro-border-yellow flex justify-between items-center">
+          <div>
+            <div class="font-arcade text-[9px] text-retro-yellow mb-1 uppercase font-bold">บันทึกวิจัยคุณภาพ</div>
+            <div id="stat-research-records" class="font-arcade text-xl text-white">0</div>
+          </div>
+          <span class="text-3xl select-none">🔬</span>
+        </div>
+
+      </div>
+
+      <!-- Action Panel -->
+      <div class="bg-neutral-900 border-4 border-black p-4 retro-border flex flex-col md:flex-row justify-between items-center gap-4">
+        <div class="text-center md:text-left">
+          <h3 class="font-arcade text-[10px] text-retro-yellow">เตรียมกล้องส่องสัตว์พร้อมหรือยัง?</h3>
+          <p class="text-xs text-neutral-400 font-body mt-1">ถือกึ่งสมาร์ตโฟนของคุณไว้ให้มั่น เดินบนเส้นทางศึกษาธรรมชาติอย่างระมัดระวัง แล้วมองหาเงาของสัตว์ป่ารอบๆ ตัวนะ!</p>
+        </div>
+        
+        <button id="btn-start-observe" class="bg-retro-pink hover:bg-pink-600 text-white font-arcade text-xs py-3.5 px-6 border-4 border-black retro-border-pink font-bold uppercase tracking-wider retro-btn w-full md:w-auto">
+          📸 เริ่มส่องสัตว์ป่า
+        </button>
+      </div>
+
+      <!-- Main Journal Section -->
+      <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        
+        <!-- Left Side: Controls & Conservation Info -->
+        <div class="lg:col-span-1 flex flex-col gap-4">
+          <div class="bg-neutral-900 border-4 border-black p-4 retro-border">
+            <h3 class="font-arcade text-[9px] text-retro-blue mb-3 border-b-2 border-black pb-2">จัดการข้อมูลวิจัย</h3>
+            <div class="flex flex-col gap-2.5">
+              <button id="btn-export-csv" class="w-full text-left bg-neutral-800 hover:bg-neutral-700 text-white font-arcade text-[8px] p-2.5 border-2 border-black retro-border flex items-center gap-2 retro-btn uppercase">
+                📥 ส่งออกตาราง Excel (CSV)
+              </button>
+              <button id="btn-export-json" class="w-full text-left bg-neutral-800 hover:bg-neutral-700 text-white font-arcade text-[8px] p-2.5 border-2 border-black retro-border flex items-center gap-2 retro-btn uppercase">
+                📥 ส่งออกไฟล์วิจัย (JSON)
+              </button>
+              <button id="btn-reset-data" class="w-full text-left bg-red-950/40 hover:bg-red-950 text-red-400 font-arcade text-[8px] p-2.5 border-2 border-black retro-border flex items-center gap-2 retro-btn uppercase border-red-900/50">
+                ❌ ล้างบันทึกทั้งหมด
+              </button>
+            </div>
+          </div>
+
+          <div class="bg-neutral-900 border-4 border-black p-4 retro-border text-xs text-neutral-400 leading-relaxed font-body">
+            <h3 class="font-arcade text-[9px] text-retro-pink mb-3 border-b-2 border-black pb-2">คุณค่าของข้อมูลวิจัย</h3>
+            <p class="mb-2"><strong>ศูนย์ธรรมชาติวิทยาดอยสุเทพ</strong> นำข้อมูลนี้ไปใช้วิเคราะห์การเปลี่ยนแปลงทางชีวภาพของผืนป่าดอยสุเทพ!</p>
+            <p>รูปภาพวิจัยคุณภาพ (Research Grade) มีสเปกดังนี้ครับ:</p>
+            <ul class="list-disc list-inside mt-1 space-y-1 font-semibold text-neutral-300">
+              <li>ความแม่นยำ GPS ดีเยี่ยม (&le; 15 เมตร)</li>
+              <li>ตรงกับสัตว์ป่าในระบบ</li>
+              <li>ยืนยันชื่อสัตว์ป่าครบถ้วน</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Right Side: Observations List -->
+        <div class="lg:col-span-3 flex flex-col gap-3">
+          <h3 class="font-arcade text-[10px] text-retro-yellow mb-1 select-none flex items-center gap-2">
+            📂 คลังรูปภาพบันทึกสัตว์ป่าของฉัน
+          </h3>
+          
+          <div id="journal-list-container" class="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[600px] overflow-y-auto pr-1">
+            <!-- Dynamic elements loaded via app.js -->
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- 3. CAMERA SCREEN -->
+    <section id="view-camera" class="app-view hidden max-w-xl mx-auto w-full flex flex-col items-center">
+      <div class="bg-black border-4 border-black retro-border-pink w-full relative overflow-hidden aspect-square flex items-center justify-center">
+        
+        <!-- Simulated screen scanlines scrolling -->
+        <div class="scanline-light"></div>
+        
+        <!-- Live Video Element -->
+        <video id="camera-video" class="w-full h-full object-cover hidden" playsinline></video>
+        
+        <!-- Simulated Viewfinder Canvas -->
+        <canvas id="camera-sim-canvas" width="600" height="600" class="w-full h-full object-cover"></canvas>
+
+        <!-- Viewfinder Overlays -->
+        <!-- Flashing REC badge -->
+        <div class="absolute top-4 left-4 bg-black/75 px-2.5 py-1 border border-black flex items-center gap-1.5 font-arcade text-[8px] z-20">
+          <span class="w-2.5 h-2.5 rounded-full bg-red-600 inline-block animate-rec-pulse"></span>
+          <span class="text-white tracking-wider font-bold">REC</span>
+        </div>
+
+        <!-- GPS Indicator Badge -->
+        <div class="absolute top-4 right-4 bg-black/75 px-2.5 py-1 border border-black flex flex-col font-mono text-[9px] text-right z-20">
+          <div id="gps-status-text" class="text-yellow-400 font-bold font-arcade text-[6px]">กำลังค้นหา GPS...</div>
+          <div class="text-white mt-0.5">ความแม่นยำ: <span id="gps-accuracy-text" class="text-retro-blue font-bold">---</span></div>
+        </div>
+
+        <!-- Live Mode Badge -->
+        <div class="absolute bottom-4 left-4 z-20">
+          <span id="camera-mode-badge" class="bg-red-500 text-white px-2 py-0.5 border border-black font-arcade text-[10px]">
+            โหมดถ่ายภาพจริง
+          </span>
+        </div>
+
+        <!-- Target swap button for simulator mode -->
+        <button id="btn-swap-target" class="absolute bottom-4 right-4 bg-retro-blue hover:bg-cyan-400 text-black font-arcade text-[8px] py-1.5 px-2.5 border-2 border-black retro-border font-bold uppercase z-20 cursor-pointer hidden">
+          🔄 ค้นหาสัตว์ตัวต่อไป
+        </button>
+      </div>
+
+      <!-- Safety Rules Ticker (Marquee) -->
+      <div class="w-full bg-red-950 border-x-4 border-black px-4 py-1.5 select-none overflow-hidden shrink-0 mt-2">
+        <div class="animate-marquee whitespace-nowrap text-[9px] font-arcade text-retro-yellow uppercase flex gap-16 tracking-wider">
+          <span>⚠️ กฎเหล็กนักสืบป่า: ห้ามเข้าใกล้ ห้ามวิ่งไล่ ห้ามป้อนอาหาร หรือสัมผัสตัวสัตว์เด็ดขาด! และกรุณาอยู่ในเส้นทางเดินป่านะคร้าบ!</span>
+          <span>⚠️ กฎเหล็กนักสืบป่า: ห้ามเข้าใกล้ ห้ามวิ่งไล่ ห้ามป้อนอาหาร หรือสัมผัสตัวสัตว์เด็ดขาด! และกรุณาอยู่ในเส้นทางเดินป่านะคร้าบ!</span>
+        </div>
+      </div>
+
+      <!-- Camera Controls -->
+      <div class="bg-neutral-900 border-4 border-black border-t-0 p-4 retro-border w-full flex justify-between gap-4">
+        <button id="btn-camera-cancel" class="bg-neutral-800 hover:bg-neutral-700 text-white font-arcade text-xs py-3 px-6 border-4 border-black retro-border font-bold uppercase cursor-pointer retro-btn">
+          ย้อนกลับ
+        </button>
+        <button id="btn-camera-capture" class="flex-grow bg-retro-pink hover:bg-pink-600 text-white font-arcade text-xs py-3 px-6 border-4 border-black retro-border-pink font-bold uppercase tracking-widest cursor-pointer retro-btn">
+          📸 แชะ! ถ่ายภาพสัตว์
+        </button>
+      </div>
+    </section>
+
+    <!-- 4. DETECTION & ANALYSIS VIEW -->
+    <section id="view-analysis" class="app-view hidden max-w-xl mx-auto w-full flex flex-col items-center">
+      <div class="bg-neutral-900 border-4 border-black p-4 retro-border-pink w-full flex flex-col items-center text-center">
+        
+        <!-- Loading Screen -->
+        <div id="analysis-loading-text" class="py-12 flex flex-col items-center gap-6">
+          <div class="w-12 h-12 border-4 border-retro-pink border-t-transparent rounded-full animate-spin"></div>
+          <div class="font-arcade text-xs text-retro-pink uppercase animate-pulse">กำลังเรียกใช้ AI ค้นหาสัตว์...</div>
+          <div class="text-neutral-400 text-xs font-body max-w-xs">ระบบกำลังสแกนหาตัวสัตว์เพื่อจัดตำแหน่งโฟกัส กรุณารอสักครู่นะครับ!</div>
+        </div>
+
+        <!-- Draggable Adjuster Container -->
+        <div id="adjuster-container" class="w-full aspect-square hidden">
+          <!-- BoundingBoxOverlay attaches here -->
+        </div>
+
+        <!-- Hidden canvas/image references for TensorFlow processing -->
+        <img id="analysis-image-element" class="hidden" alt="source image for model" />
+
+        <!-- Instructions -->
+        <div id="adjuster-instructions" class="text-left font-body text-xs text-neutral-400 my-4 hidden bg-black/40 p-3 border-2 border-neutral-800 w-full">
+          <h4 class="font-arcade text-[8px] text-retro-yellow mb-2 uppercase">🎯 ตัวปรับกรอบโฟกัสภาพ</h4>
+          <p class="leading-relaxed text-neutral-300">ช่วยพี่ซายม่อนขยับกรอบสี่เหลี่ยมให้คลุมตัวสัตว์ป่าพอดีหน่อยนะครับ! <strong>ลากตรงกลางกล่อง</strong> เพื่อย้ายตำแหน่ง หรือ <strong>ลากที่มุมสี่เหลี่ยม</strong> เพื่อขยายกรอบ พยายามจัดให้ตัวสัตว์ป่าอยู่ตรงกลางกล้องนะ!</p>
+        </div>
+
+        <!-- Action buttons -->
+        <div id="adjuster-actions" class="w-full justify-between gap-4 hidden flex">
+          <button id="btn-analysis-retry" class="bg-neutral-800 hover:bg-neutral-700 text-white font-arcade text-xs py-3 px-5 border-4 border-black retro-border font-bold uppercase cursor-pointer retro-btn">
+            ถ่ายใหม่
+          </button>
+          <button id="btn-analysis-proceed" class="flex-grow bg-retro-yellow hover:bg-yellow-300 text-black font-arcade text-xs py-3 px-5 border-4 border-black retro-border-yellow font-bold uppercase cursor-pointer retro-btn">
+            ระบุชนิดพันธุ์สัตว์ป่า ➡️
+          </button>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- 5. SPECIES SELECTION -->
+    <section id="view-species" class="app-view hidden w-full flex flex-col gap-6">
+      
+      <!-- Page Title -->
+      <div class="bg-neutral-900 border-4 border-black p-4 retro-border flex justify-between items-center select-none">
+        <div>
+          <h2 class="font-arcade text-xs text-retro-yellow uppercase">ระบบสืบค้นและระบุชนิดพันธุ์สัตว์ป่า</h2>
+          <p class="text-[10px] text-neutral-400 mt-1 font-body">คลิกเลือกชื่อสัตว์ป่าดอยสุเทพที่ถูกต้อง หรือพิมพ์ค้นหาฐานข้อมูลออนไลน์ได้เลยครับ</p>
+        </div>
+        <img src="assets/mascot/camera.png" alt="Mascot Camera" class="w-16 h-16 mascot-sprite object-contain shrink-0" />
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Left Column (4 cols): Photo preview & Bounding box summary -->
+        <div class="lg:col-span-4 flex flex-col gap-4">
+          <div class="bg-neutral-900 border-4 border-black p-3 retro-border flex flex-col items-center">
+            <h3 class="font-arcade text-[8px] text-retro-blue self-start mb-2 uppercase">ภาพตัวอย่างของคุณ</h3>
+            <div class="relative w-full aspect-square border-4 border-black bg-black overflow-hidden">
+              <img id="species-photo-thumbnail" class="w-full h-full object-cover" alt="Captured Thumbnail" />
+            </div>
+          </div>
+          
+          <!-- Helper Speech Bubble -->
+          <div class="dialog-box dialog-tail-left p-3 text-black rounded-lg">
+            <h4 class="font-arcade text-[8px] text-retro-pink mb-1">พี่ซายม่อนชี้แนะ (SciMon Says):</h4>
+            <p class="text-xs font-body font-semibold leading-relaxed text-neutral-800">
+              "เลือกชื่อของสัตว์ตัวในภาพจากตารางตรงกลางได้เลยครับ ยิ่งตัวที่ระดับความหายากสูงๆ จะทวีคูณคะแนนให้เยอะเลยล่ะครับน้องๆ!"
+            </p>
+          </div>
+        </div>
+
+        <!-- Middle Column (4 cols): Search & Local/Online Catalog List -->
+        <div class="lg:col-span-4 flex flex-col gap-3">
+          
+          <!-- Search input -->
+          <div class="flex border-4 border-black bg-black retro-border">
+            <input id="species-search-input" type="text" placeholder="พิมพ์ชื่อสัตว์เพื่อค้นหา..." class="flex-grow bg-neutral-950 text-white font-body px-3 py-2 text-sm focus:outline-none placeholder:text-neutral-600" />
+            <button id="species-search-btn" class="bg-retro-pink hover:bg-pink-600 text-white px-4 font-arcade text-[9px] uppercase cursor-pointer border-l-4 border-black">
+              ค้นหา
+            </button>
+          </div>
+
+          <h3 id="species-list-header" class="font-arcade text-[8px] text-retro-yellow mt-1 select-none font-bold">สัตว์ป่าที่พบบ่อยบนดอยสุเทพ:</h3>
+
+          <!-- Scrollable species list -->
+          <div id="species-list-container" class="flex flex-col gap-2 max-h-[350px] overflow-y-auto pr-1">
+            <!-- Dynamic listing loaded via app.js -->
+          </div>
+
+        </div>
+
+        <!-- Right Column (4 cols): Detail view of selected species -->
+        <div class="lg:col-span-4 bg-neutral-900 border-4 border-black p-4 retro-border flex flex-col justify-between">
+          <div>
+            <div class="flex justify-between items-start flex-wrap gap-2 mb-2">
+              <h3 id="species-detail-name" class="font-arcade text-[10px] text-retro-yellow">ชื่อสัตว์ป่า</h3>
+              <div class="flex gap-1">
+                <span id="species-detail-conservation" class="px-2 py-0.5 border border-black text-xs font-bold bg-green-600 text-white">IUCN: LC</span>
+                <span id="species-detail-rarity" class="px-2 py-0.5 border border-black text-xs font-bold bg-neutral-700 text-white">ทั่วไป</span>
+              </div>
+            </div>
+            
+            <h4 id="species-detail-scientific" class="text-xs italic text-neutral-400 font-body mb-4">ชื่อวิทยาศาสตร์</h4>
+            
+            <p id="species-detail-description" class="text-xs text-neutral-300 leading-relaxed font-body mb-4">
+              คำอธิบายรายละเอียดสายพันธุ์สัตว์ป่า
+            </p>
+
+            <!-- Conservation warnings box -->
+            <div class="bg-neutral-950 p-3 border-2 border-red-900/50 rounded-lg">
+              <h4 class="font-arcade text-[8px] text-red-500 mb-1.5 uppercase tracking-wider font-bold">🚫 กฎเหล็กความปลอดภัยและการอนุรักษ์</h4>
+              <p id="species-detail-guidelines" class="text-xs text-neutral-400 font-body leading-relaxed">
+                คำแนะนำในการปกป้องสัตว์ป่าไม่ให้ได้รับผลกระทบจากคน
+              </p>
+            </div>
+          </div>
+
+          <!-- Proceed Button -->
+          <button id="btn-confirm-species" class="w-full bg-retro-yellow hover:bg-yellow-300 text-black font-arcade text-xs py-3.5 px-6 border-4 border-black retro-border-yellow font-bold uppercase tracking-wider retro-btn mt-6">
+            ยืนยันชื่อสัตว์ป่า ➡️
+          </button>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- 6. SCORING & RESULTS SCREEN -->
+    <section id="view-results" class="app-view hidden max-w-xl mx-auto w-full flex flex-col items-center">
+      <div class="bg-neutral-900 border-4 border-black p-6 retro-border flex flex-col items-center text-center w-full relative">
+        <div class="scanline-light"></div>
+        
+        <!-- Score Title Banner -->
+        <div class="bg-retro-pink text-white font-arcade text-[10px] px-4 py-1.5 border-2 border-black retro-border uppercase -mt-10 mb-6">
+          วิเคราะห์รูปภาพสำเร็จ!
+        </div>
+
+        <h2 id="results-species-name" class="font-arcade text-xs md:text-sm text-retro-yellow mb-2 text-outline-black">
+          สัตว์ป่าดอยสุเทพ
+        </h2>
+        <div class="flex gap-2 justify-center mb-6">
+          <span id="results-rarity-badge" class="bg-pink-600 text-white px-2 py-0.5 border border-black font-arcade text-[8px]">พบค่อนข้างยาก</span>
+          <span id="results-grade-badge" class="bg-green-500 text-black px-2 py-0.5 border border-black font-arcade text-[8px] font-bold hidden">วิจัยคุณภาพ (RESEARCH GRADE)</span>
+        </div>
+
+        <!-- Dynamic scoreboard counts -->
+        <div class="w-full bg-black border-4 border-black p-4 font-arcade text-[9px] text-left flex flex-col gap-3.5 mb-6 text-neutral-300">
+          
+          <div class="flex justify-between items-center">
+            <span>คะแนนความพอดีภาพ (SIZE SCORE):</span>
+            <span id="results-size-val" class="text-white font-bold">0</span>
+          </div>
+
+          <div class="flex justify-between items-center">
+            <span>คะแนนตำแหน่งภาพส้ม (CENTER SCORE):</span>
+            <span id="results-centering-val" class="text-white font-bold">0</span>
+          </div>
+
+          <div class="flex justify-between items-center border-b border-neutral-800 pb-2.5">
+            <span>ตัวคูณคะแนนความหายาก (RARITY MULTIPLIER):</span>
+            <span id="results-multiplier-val" class="text-retro-blue font-bold">1.0x</span>
+          </div>
+
+          <div class="flex justify-between items-center pt-1.5 text-xs">
+            <span class="text-retro-yellow font-bold">คะแนนรวมที่ได้:</span>
+            <span id="results-total-val" class="text-retro-yellow text-sm font-bold text-outline-black">0</span>
+          </div>
+
+        </div>
+
+        <!-- Research grade criteria report -->
+        <div class="w-full bg-neutral-950 p-3 border-2 border-retro-border text-left mb-6 font-mono text-[9px] text-neutral-400 space-y-1">
+          <div id="results-gps-latlng">พิกัดละติจูด/ลองจิจูด</div>
+          <div id="results-gps-accuracy">ความแม่นยำ GPS: ---</div>
+          <div class="text-[8px] text-neutral-500 mt-2 font-body font-bold">⚠️ หมายเหตุ: ข้อมูลที่จะเป็น "วิจัยคุณภาพ" จะต้องจับพิกัดแม่นยำ (&le;15 เมตร) และได้รับยืนยันชื่อสัตว์ถูกต้อง เพื่อให้นักวิจัยนำไปใช้ประเมินผืนป่าได้จริงๆ นะคร้าบ!</div>
+        </div>
+
+        <!-- Mascot & Ethical Guidelines -->
+        <div class="flex gap-4 items-center mb-6 w-full text-left bg-neutral-950/40 p-3 border-2 border-neutral-800 rounded-lg">
+          <img src="assets/mascot/victory.png" alt="Victory Mascot" class="w-20 h-20 mascot-sprite object-contain shrink-0" />
+          
+          <div class="flex-grow">
+            <h4 class="font-arcade text-[7px] text-retro-pink mb-1 uppercase font-bold">กฎการอนุรักษ์ที่ต้องปฏิบัติร่วมกัน:</h4>
+            <p id="results-mascot-warning-text" class="text-xs font-body text-neutral-300 leading-relaxed font-semibold">
+              คำแนะนำความปลอดภัยเกี่ยวกับสัตว์ป่าดอยสุเทพจะแสดงขึ้นตรงนี้ครับน้องๆ
+            </p>
+          </div>
+        </div>
+
+        <!-- Save Button -->
+        <button id="btn-save-journal" class="w-full bg-retro-yellow hover:bg-yellow-300 text-black font-arcade text-xs py-4 px-6 border-4 border-black retro-border-yellow font-bold uppercase tracking-widest cursor-pointer retro-btn">
+          💾 บันทึกลงสมุดภาพ
+        </button>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- OBSERVATION DETAIL MODAL -->
+  <div id="detail-modal" class="fixed inset-0 bg-black/85 flex items-center justify-center p-4 z-50 hidden cursor-pointer">
+    <div class="bg-neutral-900 border-4 border-black retro-border max-w-xl w-full p-4 relative cursor-default max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
+      
+      <button id="modal-close-btn" class="absolute top-2 right-2 text-neutral-400 hover:text-white font-arcade text-xs px-2 py-1 cursor-pointer">
+        [ปิด X]
+      </button>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+        <div class="aspect-square bg-black border-4 border-black overflow-hidden relative">
+          <img id="modal-img" class="w-full h-full object-cover" alt="Observation Photo" />
+        </div>
+        <div class="flex flex-col justify-between">
+          <div>
+            <h3 id="modal-title" class="font-arcade text-xs text-retro-yellow">ชื่อสัตว์ป่า</h3>
+            <p id="modal-scientific" class="text-xs italic text-neutral-400 font-body mb-3">ชื่อวิทยาศาสตร์</p>
+            
+            <div class="space-y-1 font-mono text-[9px] text-neutral-400 mb-4">
+              <div>⏰ วันเวลา: <span id="modal-time" class="text-white">---</span></div>
+              <div>📍 พิกัด GPS: <span id="modal-location" class="text-white">---</span></div>
+            </div>
+
+            <!-- Score breakdown -->
+            <div id="modal-score" class="w-full bg-black/60 p-2.5 border border-retro-border font-mono text-[10px] space-y-1 mb-4">
+              <!-- Score breakdown elements loaded in app.js -->
+            </div>
+          </div>
+
+          <!-- Research Status -->
+          <div id="modal-research-status" class="mb-4">
+            <!-- Loaded in app.js -->
+          </div>
+
+          <button id="modal-delete-btn" class="w-full bg-red-950/40 hover:bg-red-950 text-red-400 font-arcade text-[8px] py-2 px-3 border-2 border-black retro-border cursor-pointer retro-btn uppercase border-red-900/50">
+            🗑️ ลบภาพบันทึกนี้
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Footer Info -->
+  <footer class="bg-black border-t-4 border-retro-border p-3 text-center z-10 shrink-0 text-neutral-500 font-mono text-[8px]">
+    สมุดภาพสัตว์ป่าดอยสุเทพ ศูนย์ธรรมชาติวิทยาดอยสุเทพ © 2026. จัดทำขึ้นเพื่อการศึกษาวิจัยและอนุรักษ์ธรรมชาติอย่างปลอดภัย 💚
+  </footer>
+
+</body>
+</html>
