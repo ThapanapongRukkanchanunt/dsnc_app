@@ -134,10 +134,20 @@ export class DSNCDatabase {
   }
 
   async _prepopulateSpecies() {
-    const transaction = this.db.transaction('species', 'readwrite');
-    const store = transaction.objectStore('species');
-    
     return new Promise((resolve) => {
+      const transaction = this.db.transaction('species', 'readwrite');
+      const store = transaction.objectStore('species');
+
+      transaction.oncomplete = () => {
+        console.log('Species database transaction completed successfully.');
+        resolve();
+      };
+
+      transaction.onerror = (e) => {
+        console.error('Species database transaction failed:', e.target.error);
+        resolve(); // resolve anyway to prevent app lock
+      };
+
       // Check if we need to migrate English records to Thai
       const getRequest = store.get('sunda_colugo');
       
@@ -163,11 +173,6 @@ export class DSNCDatabase {
             }
           };
         }
-        resolve();
-      };
-      
-      getRequest.onerror = () => {
-        resolve();
       };
     });
   }
