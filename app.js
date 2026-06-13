@@ -215,7 +215,8 @@ class DSNCApp {
           source: 'custom'
         },
         gameMetrics: { sizeScore: 0, centeringScore: 0, rarityMultiplier: 1.0, totalScore: 0 },
-        researchMetrics: { gpsQuality: 'low', scientificConfidence: 0.1, researchGrade: false }
+        researchMetrics: { gpsQuality: 'low', scientificConfidence: 0.1, researchGrade: false },
+        submitted: false
       };
 
       // If camera is in simulator mode, grab the current mock target's ID
@@ -585,7 +586,8 @@ class DSNCApp {
         boundingBox: this.activeObservation.boundingBox,
         species: this.activeObservation.species,
         gameMetrics: this.activeObservation.gameMetrics,
-        researchMetrics: this.activeObservation.researchMetrics
+        researchMetrics: this.activeObservation.researchMetrics,
+        submitted: false
       });
 
       URL.revokeObjectURL(this.activeObservation.photoUrl);
@@ -612,6 +614,13 @@ class DSNCApp {
     document.getElementById('stat-total-score').textContent = totalScore;
     document.getElementById('stat-species-found').textContent = uniqueSpecies;
     document.getElementById('stat-research-records').textContent = researchGradeCount;
+
+    // Calculate unsent observations count
+    const unsentCount = this.observations.filter(obs => !obs.submitted).length;
+    const syncCountEl = document.getElementById('sync-count');
+    if (syncCountEl) {
+      syncCountEl.textContent = unsentCount;
+    }
   }
 
   renderDashboardList() {
@@ -646,8 +655,12 @@ class DSNCApp {
       });
 
       const researchGradeTag = obs.researchMetrics.researchGrade 
-        ? `<span class="bg-green-500 text-black px-1.5 py-0.5 border border-black font-body text-[10px] font-bold">บันทึกวิจัยคุณภาพ</span>`
-        : `<span class="bg-neutral-800 text-neutral-400 px-1.5 py-0.5 border border-neutral-700 font-body text-[10px]">บันทึกเก็บแต้มทั่วไป</span>`;
+        ? `<span class="bg-green-500 text-black px-1.5 py-0.5 border border-black font-body text-[9px] font-bold">บันทึกวิจัยคุณภาพ</span>`
+        : `<span class="bg-neutral-800 text-neutral-400 px-1.5 py-0.5 border border-neutral-700 font-body text-[9px]">บันทึกเก็บแต้มทั่วไป</span>`;
+
+      const syncTag = obs.submitted
+        ? `<span class="bg-green-600/30 border border-green-500 text-green-400 px-1.5 py-0.5 font-body text-[8px] rounded">ส่งแล็บแล้ว</span>`
+        : `<span class="bg-yellow-500/20 border border-yellow-500 text-yellow-400 px-1.5 py-0.5 font-body text-[8px] rounded animate-pulse">รอส่งแล็บ</span>`;
 
       card.innerHTML = `
         <div class="w-full md:w-32 aspect-square relative bg-neutral-950 flex-shrink-0">
@@ -660,8 +673,9 @@ class DSNCApp {
           <div>
             <div class="flex justify-between items-start">
               <h4 class="font-body font-bold text-sm text-retro-yellow group-hover:text-pink-500 transition-colors">${obs.species.commonName}</h4>
-              <div class="flex gap-1">
+              <div class="flex flex-col items-end gap-1.5">
                 ${researchGradeTag}
+                ${syncTag}
               </div>
             </div>
             <p class="text-xs italic text-neutral-400 font-body mt-0.5">${obs.species.scientificName}</p>
@@ -827,6 +841,43 @@ class DSNCApp {
     });
   }
 
+  async handleSyncLab() {
+    const unsentObservations = this.observations.filter(obs => !obs.submitted);
+
+    if (unsentObservations.length === 0) {
+      alert('ไม่มีข้อมูลบันทึกชุดใหม่ที่จะส่งเลยครับน้องๆ ลองไปส่องสัตว์เพิ่มก่อนนะ! 📸');
+      return;
+    }
+
+    const syncBtn = document.getElementById('btn-sync-lab');
+    const originalText = syncBtn.innerHTML;
+    syncBtn.disabled = true;
+    syncBtn.innerHTML = '⏳ กำลังส่ง...';
+
+    try {
+      // Simulate network delay of 1.5s
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
+      // Mark all unsent records as submitted in database
+      for (const obs of unsentObservations) {
+        obs.submitted = true;
+        await this.db.saveObservation(obs);
+      }
+
+      await this.refreshObservations();
+      this.renderDashboardList();
+      this.updateStats();
+
+      alert(`🚀 ส่งรูปภาพบันทึกใหม่ ${unsentObservations.length} รายการไปห้องวิจัยของซายม่อนสำเร็จแล้ว! ขอบใจน้องๆ มากนะคร้าบ 🔬🧬`);
+    } catch (err) {
+      console.error('Error syncing to SciMon Lab:', err);
+      alert('การส่งข้อมูลไปห้องวิจัยขัดข้อง: ' + err.message);
+    } finally {
+      syncBtn.disabled = false;
+      this.updateStats(); // restores correct count/icon
+    }
+  }
+
   async handleResetData() {
     if (confirm('⚠️ คำเตือน: น้องๆ แน่ใจใช่ไหมครับว่าจะลบรูปภาพสัตว์ป่าทั้งหมดในสมุดบันทึก? ข้อมูลคะแนนจะหายไปทั้งหมดเลยนะ!')) {
       await this.db.clearAllObservations();
@@ -840,9 +891,10 @@ class DSNCApp {
   bindButtons() {
     // Welcome View
     document.getElementById('btn-start-welcome').onclick = () => this.navigateTo('view-dashboard');
-    
+
     // Dashboard View
     document.getElementById('btn-start-observe').onclick = () => this.navigateTo('view-camera');
+    document.getElementById('btn-sync-lab').onclick = () => this.handleSyncLab();
     document.getElementById('btn-export-json').onclick = () => this.exportJSON();
     document.getElementById('btn-export-csv').onclick = () => this.exportCSV();
     document.getElementById('btn-reset-data').onclick = () => this.handleResetData();

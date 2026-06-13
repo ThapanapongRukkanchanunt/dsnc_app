@@ -142,10 +142,15 @@
           <h3 class="font-arcade text-[10px] text-retro-yellow">เตรียมกล้องส่องสัตว์พร้อมหรือยัง?</h3>
           <p class="text-xs text-neutral-400 font-body mt-1">ถือกึ่งสมาร์ตโฟนของคุณไว้ให้มั่น เดินบนเส้นทางศึกษาธรรมชาติอย่างระมัดระวัง แล้วมองหาเงาของสัตว์ป่ารอบๆ ตัวนะ!</p>
         </div>
-        
-        <button id="btn-start-observe" class="bg-retro-pink hover:bg-pink-600 text-white font-arcade text-xs py-3.5 px-6 border-4 border-black retro-border-pink font-bold uppercase tracking-wider retro-btn w-full md:w-auto">
-          📸 เริ่มส่องสัตว์ป่า
-        </button>
+
+        <div class="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+          <button id="btn-sync-lab" class="bg-retro-blue hover:bg-cyan-400 text-black font-arcade text-[8px] py-3 px-4 border-4 border-black retro-border-blue font-bold uppercase tracking-wider retro-btn flex items-center justify-center gap-2">
+            🚀 ส่งแล็บซายม่อน (<span id="sync-count">0</span>)
+          </button>
+          <button id="btn-start-observe" class="bg-retro-pink hover:bg-pink-600 text-white font-arcade text-xs py-3 px-6 border-4 border-black retro-border-pink font-bold uppercase tracking-wider retro-btn flex items-center justify-center gap-2">
+            📸 เริ่มส่องสัตว์ป่า
+          </button>
+        </div>
       </div>
 
       <!-- Main Journal Section -->
@@ -441,7 +446,7 @@
 
         <!-- Save Button -->
         <button id="btn-save-journal" class="w-full bg-retro-yellow hover:bg-yellow-300 text-black font-arcade text-xs py-4 px-6 border-4 border-black retro-border-yellow font-bold uppercase tracking-widest cursor-pointer retro-btn">
-          💾 บันทึกลงสมุดภาพ
+          💾 ส่งไปห้องวิจัยของซายม่อน
         </button>
       </div>
     </section>
